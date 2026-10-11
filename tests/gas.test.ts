@@ -170,7 +170,7 @@ describe('D-058 애플워치 받기 (실제 빌드한 서버 코드)', () => {
   });
   it('연결 시험(canary): canary 기록 하나만, 다음 동기화로 앱에 옴 (앱 화면은 무시)', async () => {
     const g = gas(); const A = dev('A');
-    expect(g.post({ op: 'health', key: g.key, kind: 'canary', hr: hrText })).toEqual({ ok: true, received: 2, skipped: 1, stored: ['canary'] });
+    expect(g.post({ op: 'health', key: g.key, kind: 'canary', hr: hrText })).toMatchObject({ ok: true, received: 2, skipped: 1, stored: ['canary'] });
     await syncOnce(A, g.transport);
     expect((await A.health.get('canary'))?.type).toBe('canary');
   });
@@ -259,6 +259,33 @@ describe('D-059 운동별 요약 (실제 빌드한 서버 코드)', () => {
     await softDelete(A, 'workouts', 'wk2');
     await syncOnce(A, g.transport);
     expect(await A.health.get('ws-wk2')).toBeUndefined();
+  });
+});
+
+describe('D-061 칸 하나짜리 POST (실제 빌드한 서버 코드)', () => {
+  it('에너지만·수면만 보낸 요청도 받고, 새 앱 동기화로 들어옴', async () => {
+    const g = gas(); const A = dev('A');
+    const at = (minAgo: number) => new Date(Date.now() - minAgo * 60000).toISOString();
+    const e = g.post({ op: 'health', key: g.key, kind: 'workout', energy: `${at(30)} | 12 | ${at(20)}` });
+    expect(e).toMatchObject({ ok: true, received: 1, skipped: 0 });
+    const s = g.post({ op: 'health', key: g.key, kind: 'daily', sleep: `${at(300)} | 코어 | ${at(200)}` });
+    expect(s).toMatchObject({ ok: true, received: 1, skipped: 0 });
+    await syncOnce(A, g.transport);
+    const rows = await A.health.toArray();
+    expect(rows.some((r) => r.type === 'energy')).toBe(true);
+    expect(rows.some((r) => r.type === 'sleep')).toBe(true);
+  });
+});
+
+describe('검토 E3 진단 파일 (실제 빌드한 서버 코드)', () => {
+  it('Key·키 칸으로 보내도 health_debug.json 에 키가 없음', () => {
+    const g = gas();
+    const r = g.post({ OP: 'health', 키: g.key, Kind: 'workout', 심박: `${new Date().toISOString()} | 70`, memo: `k=${g.key}` });
+    expect(r).toMatchObject({ ok: true, received: 1 });
+    const f = g.dbFolder()!.files.find((x) => x.name === 'health_debug.json')!;
+    expect(f).toBeDefined();
+    expect(f.content.includes(g.key)).toBe(false);
+    expect(f.content).toContain('[숨김]');
   });
 });
 

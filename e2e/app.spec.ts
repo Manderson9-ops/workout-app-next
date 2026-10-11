@@ -1967,13 +1967,13 @@ test('D-055 탭 5개·위 원형 버튼·빈 홈, 새로 바뀐 점(예전 버�
   await expect(sheet).toHaveAttribute('aria-modal', 'true');
   const entries = sheet.locator('.wn-entry');
   await expect(entries.first()).toHaveAttribute('aria-label', `${SHOWN_VERSION} 바뀐 점`);
-  await expect(entries.nth(1)).toHaveAttribute('aria-label', '0.9.6 바뀐 점'); // 0.9.7(2줄) + 0.9.6(3줄) + 0.9.5(3줄) = 8줄
+  await expect(entries.nth(1)).toHaveAttribute('aria-label', '0.9.8 바뀐 점'); // 0.9.9(3줄) + 0.9.8(3줄) + 0.9.7(2줄) = 8줄
   await expect(sheet.locator('.wn-lines li')).toHaveCount(8); // 최대 8줄 + 모두 보기
   await expect(sheet.getByRole('button', { name: /^모두 보기/ })).toBeVisible();
   await expect(sheet.getByRole('button', { name: '확인' })).toBeFocused();
   await checkScreen(page, '65-whats-new');
   await sheet.getByRole('button', { name: /^모두 보기/ }).click();
-  await expect(sheet.locator('.wn-lines li')).toHaveCount(33); // 0.9.7 2줄 + 0.9.6·0.9.5·0.9.4 3줄 + 0.9.3 2줄 + 0.9.2·0.9.1·0.9.0·0.8.13 각 5줄
+  await expect(sheet.locator('.wn-lines li')).toHaveCount(39); // 0.9.9·0.9.8 3줄 + 0.9.7 2줄 + 0.9.6·0.9.5·0.9.4 3줄 + 0.9.3 2줄 + 0.9.2·0.9.1·0.9.0·0.8.13 각 5줄
   // 다시 열면 안 뜸 (본 버전 저장)
   expect(await page.evaluate(() => localStorage.getItem('app.lastSeenVersion'))).toBe(APP_VERSION);
   // [보러 가기] → 그 화면(앱 정보)으로 가고 시트는 닫힘
@@ -2008,7 +2008,7 @@ test('D-055 탭 5개·위 원형 버튼·빈 홈, 새로 바뀐 점(예전 버�
   await seedNextLoad(page, { 'app.lastSeenVersion': '0.8.13-preview', 'app.newDots': null });
   await page.reload();
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator('.wn-entry')).toHaveCount(3); // 0.9.7(2줄) + 0.9.6(3줄) + 0.9.5(3줄) = 8줄, 0.9.4 이전은 [모두 보기]
+  await expect(sheet.locator('.wn-entry')).toHaveCount(3); // 0.9.9(3줄) + 0.9.8(3줄) + 0.9.7(2줄) = 8줄, 0.9.6 이전은 [모두 보기]
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
   const gear = page.getByRole('link', { name: '설정', exact: true });
@@ -2812,6 +2812,86 @@ test.describe('D-058 애플워치 연동', () => {
     const lab = st.locator('.watch-row > span').first();
     expect((await lab.boundingBox())!.height).toBeLessThan(30);
     await checkScreen(page, '94-watch-status');
+  });
+
+  test('D-061 iOS 27 설명으로 만들기: 설명 복사(주소·키는 클립보드에만, 화면·DOM에 키 없음), 영어 전환, 복사 실패 안내', async ({ page }) => {
+    const URL_ = 'https://script.google.com/macros/s/AKfycbzTESTaaaaaaaaaaaaaaaaaaaa/exec', KEY = 'SECRETKEY1234567890ABCDEFGH';
+    await page.evaluate(([u, k]) => localStorage.setItem('send.cfg', `${u}#${k}`), [URL_, KEY]);
+    await page.goto('./#/settings/watch');
+    await page.reload();
+    await page.getByTestId('watch-old-ways').locator('summary').click();
+    const card = page.getByTestId('describe-card');
+    await expect(card).toContainText('iOS 27: 설명으로 만들기 (가장 쉬움)');
+    await expect(card.getByTestId('describe-untested')).toHaveText('실기기 시험 전');
+    await expect(card.getByTestId('describe-ai-note')).toContainText('Apple Intelligence가 처리해요');
+    await expect(card.getByTestId('describe-delete-old')).toContainText('먼저 지우세요');
+    // 클립보드 대신 기록 (두 엔진 공통)
+    await page.evaluate(() => { const w = window as Window & { __copied?: string[] }; w.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (x: string) => { w.__copied!.push(x); } } }); });
+    const copied = () => page.evaluate(() => (window as Window & { __copied?: string[] }).__copied ?? []);
+    await card.getByRole('button', { name: '단축어 A 설명 복사' }).click();
+    await expect(page.getByText('복사했어요 (키 포함 · 다른 곳에 붙여 넣지 마세요)')).toBeVisible();
+    await card.getByRole('button', { name: '단축어 B 설명 복사' }).click();
+    await card.getByRole('button', { name: '자동화 설명 복사' }).click();
+    const c1 = await copied();
+    expect(c1).toHaveLength(3);
+    expect(c1[0]).toContain(KEY); expect(c1[0]).toContain(URL_); expect(c1[0]).toContain("'운동 기록 보내기'");
+    expect(c1[1]).toContain('kind=daily'); expect(c1[1]).toContain(KEY);
+    expect(c1[2]).toContain('22:30'); expect(c1[2]).not.toContain(KEY);
+    await card.getByRole('button', { name: 'English' }).click();
+    await expect(card.getByRole('button', { name: 'English' })).toHaveAttribute('aria-pressed', 'true');
+    await card.getByRole('button', { name: '단축어 A 설명 복사' }).click();
+    expect((await copied())[3]).toContain("Create a shortcut named 'Send Workout Health'");
+    // 미리 보기·자동화 손 안내 펼쳐도 키·전체 주소 없음
+    for (const s of await card.locator('details summary').all()) await s.click();
+    await expect(page.getByTestId('prompt-A')).toContainText('[URL]');
+    const html = await page.content();
+    expect(html.includes(KEY), '키가 DOM에 없음').toBe(false);
+    expect(html.includes(URL_), '전체 주소가 DOM에 없음').toBe(false);
+    await checkScreen(page, '95-watch-describe');
+    // 복사 실패 → 손으로 만들기 안내
+    await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }); });
+    await card.getByRole('button', { name: '단축어 B 설명 복사' }).click();
+    await expect(card.getByRole('alert')).toContainText('손으로 만들기');
+  });
+
+  test('D-064 자동 보내기: 홈 화면 앱이 아니면 기본 꺼짐, 켜기 저장, 운동 끝내기 뒤 단축어 실행 링크(NFD 이름)', async ({ page }) => {
+    await page.goto('./#/settings/watch');
+    const card = page.getByTestId('watch-autorun');
+    await expect(card).toContainText('자동 보내기 (자동화 없이)');
+    const tg = card.getByTestId('watch-autorun-toggle');
+    await expect(tg).not.toBeChecked(); // 화면 시험(사파리 탭과 같음)에서는 기본 꺼짐
+    // 오늘 하루 보내기는 이미 한 것으로 (다시 읽을 때 하루 보내기가 끼어들지 않게)
+    await page.evaluate(() => localStorage.setItem('watch.runState', JSON.stringify({ dailyDay: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10) })));
+    await tg.check();
+    await page.reload();
+    await expect(page.getByTestId('watch-autorun-toggle')).toBeChecked();
+    // 단축어 앱으로 넘어가는 대신 기록 (앱의 시험용 가로채기)
+    await page.evaluate(() => { const w = window as Window & { __runs?: string[]; __woOpen?: (u: string) => void }; w.__runs = []; w.__woOpen = (u) => { w.__runs!.push(u); }; });
+    await page.getByTestId('watch-autorun').getByRole('button', { name: '지금 보내기 (운동)' }).click();
+    const runs = await page.evaluate(() => (window as Window & { __runs?: string[] }).__runs ?? []);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.startsWith('shortcuts://run-shortcut?name=')).toBe(true);
+    expect(decodeURIComponent(runs[0]!.split('name=')[1]!)).toBe('WO 운동 실행'.normalize('NFD'));
+    await expect(page.getByTestId('watch-autorun-last')).toContainText('마지막 운동 보내기 실행');
+    // 운동을 끝내면 0.8초 뒤 "WO 운동 실행"을 한 번 실행 (켜져 있을 때)
+    await page.getByRole('link', { name: '플랜' }).click();
+    await pickPart(page, '이두');
+    await page.getByRole('button', { name: '60분' }).click();
+    await page.getByRole('button', { name: '플랜 만들기', exact: true }).click();
+    await page.getByRole('button', { name: '저장', exact: true }).click();
+    await page.getByRole('button', { name: '저장하고 시작' }).click();
+    await expect(page.getByRole('button', { name: '현재 세트 완료' })).toBeVisible();
+    // 오늘 하루 보내기를 아직 안 한 상태로 바꿈 → 운동을 끝낼 때 하루 보내기가 끼어들면 안 됨 (운동 보내기 한 번만)
+    await page.evaluate(() => localStorage.setItem('watch.runState', JSON.stringify({ dailyDay: '2000-01-01' })));
+    await page.getByRole('button', { name: '운동 끝내기' }).click();
+    await page.getByRole('dialog', { name: '운동을 끝낼까요?' }).getByRole('button', { name: '끝내기' }).click();
+    await expect.poll(() => page.evaluate(() => ((window as Window & { __runs?: string[] }).__runs ?? []).length), { timeout: 10_000 }).toBe(2);
+    const runs2 = await page.evaluate(() => (window as Window & { __runs?: string[] }).__runs ?? []);
+    expect(decodeURIComponent(runs2[1]!.split('name=')[1]!)).toBe('WO 운동 실행'.normalize('NFD'));
+    await page.waitForTimeout(3500);
+    expect(await page.evaluate(() => ((window as Window & { __runs?: string[] }).__runs ?? []).length)).toBe(2);
+    // 예전 방법은 접힌 곳에
+    await expect(page.getByTestId('watch-old-ways')).not.toHaveAttribute('open', '');
   });
 
   test('D-059 서버가 저장한 운동별 요약(ws-운동ID)만 있고 원본 심박이 없어도(120일 정리 뒤) 카드·상세에 그대로', async ({ page }) => {
